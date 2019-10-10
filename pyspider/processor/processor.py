@@ -117,6 +117,9 @@ class Processor(object):
             else:
                 ret = project_data['instance'].run_task(
                     project_data['module'], task, response)
+                log_str = ret.logstr()
+                if len(log_str) > 0:
+                    logger.info("handler:%s %s" % (project, log_str))
         except Exception as e:
             logstr = traceback.format_exc()
             ret = ProcessorResult(logs=(logstr, ), exception=e)

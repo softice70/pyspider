@@ -47,7 +47,10 @@ def debug(project):
         script = (default_script
                   .replace('__DATE__', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                   .replace('__PROJECT_NAME__', project)
-                  .replace('__START_URL__', request.values.get('start-urls') or '__START_URL__'))
+                  .replace('__START_URL__', request.values.get('start-urls') or '__START_URL__')
+                  .replace('__HOSTS__', request.values.get('hosts'))
+                  .replace('__TLD_GROUPS__', request.values.get('tld-groups'))
+                  .replace('__MAIL_TO__', request.values.get('email') if request.values.get('email') is not None else ''))
 
     taskid = request.args.get('taskid')
     if taskid:
@@ -218,3 +221,4 @@ def get_script(project):
 @app.route('/blank.html')
 def blank_html():
     return ""
+

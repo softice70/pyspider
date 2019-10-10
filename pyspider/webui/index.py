@@ -148,6 +148,70 @@ def runtask():
     return json.dumps({"result": ret}), 200, {'Content-Type': 'application/json'}
 
 
+@app.route('/delete', methods=['POST', ])
+def delete_project():
+    rpc = app.config['scheduler_rpc']
+    if rpc is None:
+        return json.dumps({})
+
+    projectdb = app.config['projectdb']
+    project = request.form['project']
+    project_info = projectdb.get(project, fields=('name', 'group'))
+    if not project_info:
+        return "no such project.", 404
+
+    try:
+        ret = rpc.delete_project(project)
+    except socket.error as e:
+        app.logger.warning('connect to scheduler rpc error: %r', e)
+        return json.dumps({"result": False}), 200, {'Content-Type': 'application/json'}
+    return json.dumps({"result": ret}), 200, {'Content-Type': 'application/json'}
+
+
+@app.route('/create_projects', methods=['POST', ])
+def create_projects():
+    rpc = app.config['scheduler_rpc']
+    if rpc is None:
+        return json.dumps({})
+
+    projectdb = app.config['projectdb']
+    projects = json.loads(request.data)
+    for project in projects:
+        project_name = project['name']
+        script = project['script']
+        rate = project['rate']
+        burst = project['burst']
+        project_info = projectdb.get(project_name, fields=['name', 'status', 'group'])
+        if project_info and 'lock' in projectdb.split_group(project_info.get('group')) \
+                and not login.current_user.is_active():
+            return app.login_response
+
+        if project_info:
+            info = {
+                'script': script,
+            }
+            if project_info.get('status') in ('DEBUG', 'RUNNING',):
+                info['status'] = 'CHECKING'
+            projectdb.update(project_name, info)
+        else:
+            info = {
+                'name': project_name,
+                'script': script,
+                'group': 'delete',
+                'status': 'RUNNING',
+                'rate': app.config.get('max_rate', rate),
+                'burst': app.config.get('max_burst', burst),
+            }
+            projectdb.insert(project_name, info)
+
+    try:
+        rpc.update_project()
+        return 'ok', 200
+    except socket.error as e:
+        app.logger.warning('connect to scheduler rpc error: %r', e)
+        return 'rpc error', 200
+
+
 @app.route('/robots.txt')
 def robots():
     return """User-agent: *

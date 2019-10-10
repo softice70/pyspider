@@ -65,6 +65,7 @@ def connect_rpc(ctx, param, value):
 @click.option('--logging-config', default=os.path.join(os.path.dirname(__file__), "logging.conf"),
               help="logging config file for built-in python logging module", show_default=True)
 @click.option('--debug', envvar='DEBUG', default=False, is_flag=True, help='debug mode')
+@click.option('--rdbg', default=False, is_flag=True, help='port of remote debug')
 @click.option('--queue-maxsize', envvar='QUEUE_MAXSIZE', default=100,
               help='maxsize of queue')
 @click.option('--taskdb', envvar='TASKDB', callback=connect_db,
@@ -96,6 +97,11 @@ def cli(ctx, **kwargs):
         sys.path.append(os.getcwd())
 
     logging.config.fileConfig(kwargs['logging_config'])
+
+    if kwargs.get('rdbg'):
+        import pydevd
+        pydevd.settrace('127.0.0.1', port=9000, stdoutToServer=True, stderrToServer=True, suspend=False)
+        print ("pyspider is running in rdbg mode, server is connected at localhost:9000")
 
     # get db from env
     for db in ('taskdb', 'projectdb', 'resultdb'):

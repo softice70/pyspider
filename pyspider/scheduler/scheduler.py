@@ -185,6 +185,7 @@ class Scheduler(object):
         self._last_update_project = 0
         self._last_tick = int(time.time())
         self._postpone_request = []
+        self.mutex = threading.RLock()
 
         self._cnt = {
             "5m_time": counter.CounterManager(
@@ -221,10 +222,11 @@ class Scheduler(object):
 
     def _update_project(self, project):
         '''update one project'''
-        if project['name'] not in self.projects:
-            self.projects[project['name']] = Project(self, project)
-        else:
-            self.projects[project['name']].update(project)
+        with self.mutex:
+            if project['name'] not in self.projects:
+                self.projects[project['name']] = Project(self, project)
+            else:
+                self.projects[project['name']].update(project)
 
         project = self.projects[project['name']]
 
@@ -423,29 +425,30 @@ class Scheduler(object):
         if now - self._last_tick < 1:
             return False
         self._last_tick += 1
-        for project in itervalues(self.projects):
-            if not project.active:
-                continue
-            if project.waiting_get_info:
-                continue
-            if int(project.min_tick) == 0:
-                continue
-            if self._last_tick % int(project.min_tick) != 0:
-                continue
-            self.on_select_task({
-                'taskid': '_on_cronjob',
-                'project': project.name,
-                'url': 'data:,_on_cronjob',
-                'status': self.taskdb.SUCCESS,
-                'fetch': {
-                    'save': {
-                        'tick': self._last_tick,
+        with self.mutex:
+            for project in itervalues(self.projects):
+                if not project.active:
+                    continue
+                if project.waiting_get_info:
+                    continue
+                if int(project.min_tick) == 0:
+                    continue
+                if self._last_tick % int(project.min_tick) != 0:
+                    continue
+                self.on_select_task({
+                    'taskid': '_on_cronjob',
+                    'project': project.name,
+                    'url': 'data:,_on_cronjob',
+                    'status': self.taskdb.SUCCESS,
+                    'fetch': {
+                        'save': {
+                            'tick': self._last_tick,
+                        },
                     },
-                },
-                'process': {
-                    'callback': '_on_cronjob',
-                },
-            })
+                    'process': {
+                        'callback': '_on_cronjob',
+                    },
+                })
         return True
 
     request_task_fields = [
@@ -481,21 +484,22 @@ class Scheduler(object):
 
         # dynamic assign select limit for each project, use qsize as weight
         project_weights, total_weight = dict(), 0
-        for project in itervalues(self.projects):  # type:Project
-            if not project.active:
-                continue
-            # only check project pause when select new tasks, cronjob and new request still working
-            if project.paused:
-                continue
-            if project.waiting_get_info:
-                continue
+        with self.mutex:
+            for project in itervalues(self.projects):  # type:Project
+                if not project.active:
+                    continue
+                # only check project pause when select new tasks, cronjob and new request still working
+                if project.paused:
+                    continue
+                if project.waiting_get_info:
+                    continue
 
-            # task queue
-            task_queue = project.task_queue  # type:TaskQueue
-            pro_weight = task_queue.size()
-            total_weight += pro_weight
-            project_weights[project.name] = pro_weight
-            pass
+                # task queue
+                task_queue = project.task_queue  # type:TaskQueue
+                pro_weight = task_queue.size()
+                total_weight += pro_weight
+                project_weights[project.name] = pro_weight
+                pass
 
         min_project_limit = int(limit / 10.)  # ensure minimum select limit for each project
         max_project_limit = int(limit / 3.0)  # ensure maximum select limit for each project
@@ -629,26 +633,32 @@ class Scheduler(object):
 
     def _check_delete(self):
         '''Check project delete'''
-        now = time.time()
-        for project in list(itervalues(self.projects)):
-            if project.db_status != 'STOP':
-                continue
-            if now - project.updatetime < self.DELETE_TIME:
-                continue
-            if 'delete' not in self.projectdb.split_group(project.group):
-                continue
+        with self.mutex:
+            for project in list(itervalues(self.projects)):
+                self._delete_project(project.name, False)
 
-            logger.warning("deleting project: %s!", project.name)
-            del self.projects[project.name]
-            self.taskdb.drop(project.name)
-            self.projectdb.drop(project.name)
-            if self.resultdb:
-                self.resultdb.drop(project.name)
-            for each in self._cnt.values():
-                del each[project.name]
+    def _delete_project(self, project_name, force):
+        '''delete project'''
+        with self.mutex:
+            now = time.time()
+            project = self.projects[project_name]
+            if(project.db_status == 'STOP'
+                    and 'delete' in self.projectdb.split_group(project.group)
+                    and (force or now - project.updatetime < self.DELETE_TIME)):
+                logger.warning("deleting project: %s!", project.name)
+                del self.projects[project.name]
+                self.taskdb.drop(project.name)
+                self.projectdb.drop(project.name)
+                if self.resultdb:
+                    self.resultdb.drop(project.name)
+                for each in self._cnt.values():
+                    del each[project.name]
+                return True
+            else:
+                return False
 
     def __len__(self):
-        return sum(len(x.task_queue) for x in itervalues(self.projects))
+        return sum(len(x.task_queue) for x in self.projects.values())
 
     def quit(self):
         '''Set quit signal'''
@@ -735,6 +745,13 @@ class Scheduler(object):
             self._force_update_project = True
         application.register_function(update_project, 'update_project')
 
+        def delete_project(project_name=None):
+            if project_name:
+                return self._delete_project(project_name, True)
+            else:
+                return False
+        application.register_function(delete_project, 'delete_project')
+
         def get_active_tasks(project=None, limit=100):
             allowed_keys = set((
                 'type',
@@ -753,7 +770,7 @@ class Scheduler(object):
                 'status_code',
             ))
 
-            iters = [iter(x.active_tasks) for k, x in iteritems(self.projects)
+            iters = [iter(x.active_tasks) for k, x in self.projects.items()
                      if x and (k == project if project else True)]
             tasks = [next(x, None) for x in iters]
             result = []
@@ -781,8 +798,9 @@ class Scheduler(object):
 
         def get_projects_pause_status():
             result = {}
-            for project_name, project in iteritems(self.projects):
-                result[project_name] = project.paused
+            with self.mutex:
+                for project_name, project in iteritems(self.projects):
+                    result[project_name] = project.paused
             return result
         application.register_function(get_projects_pause_status, 'get_projects_pause_status')
 

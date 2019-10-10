@@ -73,16 +73,34 @@
               <form class="form-horizontal" method="POST">
                 <div class="modal-body">
                   <div class="form-group">
-                    <label class="col-sm-3 control-label" for="project-name">Project Name</label>
+                    <label title='项目名，只支持英文和数字的组合' class="col-sm-3 control-label" for="project-name">Project Name</label>
                     <div class="col-sm-9">
-                      <input class="form-control" type="text" name="project-name" autocomplete="off">
+                      <input class="form-control" type="text" name="project-name">
                       <span class="help-block" style="display: none;">[a-zA-Z0-9_]+</span>
                     </div>
                   </div>
                   <div class="form-group">
-                    <label class="col-sm-3 control-label" for="start-urls">Start URL(s)</label>
+                    <label title='爬虫的入口链接' class="col-sm-3 control-label" for="start-urls">Start URL(s)</label>
                     <div class="col-sm-9">
                       <input class="form-control" type="text" name="start-urls">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label title='下载指定的站点，默认可以不填，多个站点用逗号分隔' class="col-sm-3 control-label" for="hosts">Host(s)</label>
+                    <div class="col-sm-9">
+                      <input class="form-control" type="text" name="hosts">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label title='下载指定域名下的站点组，默认可以不填，多个域名用逗号分隔' class="col-sm-3 control-label" for="tld-groups">Tld goup(s)</label>
+                    <div class="col-sm-9">
+                      <input class="form-control" type="text" name="tld-groups">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label title='将结果发送到指定的邮箱' class="col-sm-3 control-label" for="email">Email</label>
+                    <div class="col-sm-9">
+                      <input class="form-control" type="text" name="email">
                     </div>
                   </div>
                   <div class="form-group">
