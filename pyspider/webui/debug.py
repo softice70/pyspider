@@ -50,6 +50,7 @@ def debug(project):
                   .replace('__START_URL__', request.values.get('start-urls') or '__START_URL__')
                   .replace('__HOSTS__', request.values.get('hosts'))
                   .replace('__TLD_GROUPS__', request.values.get('tld-groups'))
+                  .replace('\'__DEPTH__\'', request.values.get('depth'))
                   .replace('__MAIL_TO__', request.values.get('email') if request.values.get('email') is not None else ''))
 
     taskid = request.args.get('taskid')

@@ -5,6 +5,7 @@
 
 
 import os
+import json
 import subprocess
 from urllib import parse
 from threading import Timer
@@ -16,13 +17,13 @@ from urldetector.urldetector import PageTypeDetector, PageType
 
 '''properties of the project'''
 g_start_urls = '__START_URL__'.split(',')
-g_tld_groups = '__TLD_GROUPS__'.split(',')
-g_hosts = '__HOSTS__'.split(',')
+g_tld_groups = '__TLD_GROUPS__'.split(',') if len('__TLD_GROUPS__') > 0 else []
+g_hosts = '__HOSTS__'.split(',') if len('__HOSTS__') > 0 else []
+g_max_crawl_depth = '__DEPTH__'
 g_knowledge = {}
 
 g_workspace_path = '/Users/wangdongsheng/pyspider/'
 g_config_path = g_workspace_path + 'conf/'
-g_max_crawl_level = 1
 
 
 class Handler(BaseHandler):
@@ -53,7 +54,7 @@ class Handler(BaseHandler):
         for each in response.doc('a[href^="http"]').items():
             links.append((each.attr.href, each.text()))
 
-        if cur_level + 1 <= g_max_crawl_level:
+        if cur_level + 1 <= g_max_crawl_depth:
             try:
                 detector = PageTypeDetector(g_config_path,
                                             g_hosts,
@@ -89,7 +90,7 @@ class Handler(BaseHandler):
         src_file_name = self.project_name + '.json'
         result_file_name = self.project_name + '.txt'
         data_file = result_path + src_file_name
-        if self._download_result_file(src_file_name, data_file):
+        if self._download_result_file_ex(src_file_name, data_file):
             result_file = result_path + result_file_name
             try:
                 tld_groups = g_tld_groups if len(g_tld_groups) > 0 else self._get_tld_groups(g_start_urls)
@@ -189,6 +190,20 @@ class Handler(BaseHandler):
             headers = {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}
         r = requests.post(cmd_url, data=data, headers=headers)
         return r.status_code == requests.codes.ok, r.text
+
+    def _download_result_file_ex(self, src_filename, result_filename):
+        dataUrl = 'http://127.0.0.1:5000/results/dump/' + src_filename
+        res = requests.get(dataUrl)
+        try:
+            res.raise_for_status()
+            project = {'project': self.project_name, 'start_urls': g_start_urls, 'hosts': g_hosts, 'tld_groups': g_tld_groups, 'knowledge': g_knowledge}
+            with open(result_filename, "w", encoding='utf-8') as f:
+                f.write("%s\n" % json.dumps(project))
+                f.write(res.text)
+            return True
+        except Exception as exc:
+            self.logger.error('handler exception %s: _download_result_file, error:%s' % (self.project_name, exc))
+        return False
 
     def _download_result_file(self, src_filename, result_filename):
         dataUrl = 'http://127.0.0.1:5000/results/dump/' + src_filename

@@ -20,11 +20,11 @@ from pyspider.libs import sample_handler
 default_script = inspect.getsource(sample_handler)
 
 
-def cli(urlListFile, rate, burst):
+def cli(urlListFile, rate, burst, depth):
     with open(urlListFile, 'r') as fp:
         projects = []
         for line in fp.readlines():
-            project_info = gen_project_info(line.strip(), rate, burst)
+            project_info = gen_project_info(line.strip(), rate, burst, depth)
             projects.append(project_info)
 
         if create_projects(projects):
@@ -49,6 +49,7 @@ def create_project(url):
                 .replace('__START_URL__', url)
                 .replace('__MAIL_TO__', '')
                 .replace('__HOSTS__', hosts)
+                .replace('\'__DEPTH__\'', '1')
                 .replace('__TLD_GROUPS__', tld_groups))}
     data = parse.urlencode(script)
 
@@ -62,7 +63,7 @@ def create_project(url):
         return project_name
 
 
-def gen_project_info(url, rate, burst):
+def gen_project_info(url, rate, burst, depth):
     project_name, hosts, tld_groups = gen_proj_name_hosts_tldgroup(url)
     project_info = {'name': project_name,
                     'rate': rate,
@@ -74,6 +75,7 @@ def gen_project_info(url, rate, burst):
                                 .replace('__START_URL__', url)
                                 .replace('__MAIL_TO__', '')
                                 .replace('__HOSTS__', hosts)
+                                .replace('\'__DEPTH__\'', depth)
                                 .replace('__TLD_GROUPS__', tld_groups))}
     return project_info
 
@@ -185,6 +187,7 @@ def main():
     parser = optparse.OptionParser(usage, version="%prog 0.9.0")
     parser.add_option("-r", "--rate", action="store", type="float", dest="rate", default=0.1, help='rate of download, default=1')
     parser.add_option("-b", "--burst", action="store", type="float", dest="burst", default=3, help='burst of download, default=3')
+    parser.add_option("-d", "--depth", action="store", type="string", dest="depth", default='1', help='depth to crawl the site, default=1')
     (options, args) = parser.parse_args()
 
     # 参数检查，不正确则退出
@@ -192,7 +195,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli(args[0], options.rate, options.burst)
+    cli(args[0], options.rate, options.burst, options.depth)
 
 
 if __name__ == '__main__':

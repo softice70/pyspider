@@ -212,6 +212,12 @@ def create_projects():
         return 'rpc error', 200
 
 
+@app.route('/exit')
+def exit():
+    app.quit()
+    return 'pyspider exited!', 200
+
+
 @app.route('/robots.txt')
 def robots():
     return """User-agent: *
