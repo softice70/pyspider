@@ -181,6 +181,8 @@ def create_projects():
         script = project['script']
         rate = project['rate']
         burst = project['burst']
+        init_status = project['status']
+        group = project['group']
         project_info = projectdb.get(project_name, fields=['name', 'status', 'group'])
         if project_info and 'lock' in projectdb.split_group(project_info.get('group')) \
                 and not login.current_user.is_active():
@@ -197,8 +199,8 @@ def create_projects():
             info = {
                 'name': project_name,
                 'script': script,
-                'group': 'delete',
-                'status': 'RUNNING',
+                'group': group,
+                'status': init_status,
                 'rate': app.config.get('max_rate', rate),
                 'burst': app.config.get('max_burst', burst),
             }
@@ -212,10 +214,32 @@ def create_projects():
         return 'rpc error', 200
 
 
+@app.route('/get_projects')
+def get_projects():
+    projectdb = app.config['projectdb']
+    projects = sorted(projectdb.get_all(fields=index_fields),
+                      key=lambda k: (0 if k['group'] else 1, k['group'] or '', k['name']))
+    return json.dumps(projects), 200, {'Content-Type': 'application/json'}
+
+
 @app.route('/exit')
 def exit():
     app.quit()
     return 'pyspider exited!', 200
+
+
+@app.route('/restart_scheduler')
+def restart_scheduler():
+    rpc = app.config['scheduler_rpc']
+    if rpc is None:
+        return json.dumps({})
+
+    try:
+        rpc.restart()
+        return 'scheduler restarted!', 200
+    except socket.error as e:
+        app.logger.warning('connect to scheduler rpc error: %r', e)
+        return 'rpc error', 200
 
 
 @app.route('/robots.txt')

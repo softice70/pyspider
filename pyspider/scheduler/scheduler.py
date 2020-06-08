@@ -176,6 +176,7 @@ class Scheduler(object):
         self.status_queue = status_queue
         self.out_queue = out_queue
         self.data_path = data_path
+        self.keep_running = False
 
         self._send_buffer = deque()
         self._quit = False
@@ -816,6 +817,13 @@ class Scheduler(object):
                 },
             }
         application.register_function(webui_update, 'webui_update')
+
+        def restart():
+            self.keep_running = True
+            self.quit()
+            return True
+        application.register_function(restart, 'restart')
+
 
         import tornado.wsgi
         import tornado.ioloop

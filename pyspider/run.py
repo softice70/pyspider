@@ -201,29 +201,43 @@ def scheduler(ctx, xmlrpc, xmlrpc_host, xmlrpc_port,
     """
     Run Scheduler, only one scheduler is allowed.
     """
-    g = ctx.obj
-    Scheduler = load_cls(None, None, scheduler_cls)
+    re_init_rpc_in_app = False
+    while True:
+        g = ctx.obj
+        Scheduler = load_cls(None, None, scheduler_cls)
 
-    kwargs = dict(taskdb=g.taskdb, projectdb=g.projectdb, resultdb=g.resultdb,
-                  newtask_queue=g.newtask_queue, status_queue=g.status_queue,
-                  out_queue=g.scheduler2fetcher, data_path=g.get('data_path', 'data'))
-    if threads:
-        kwargs['threads'] = int(threads)
+        kwargs = dict(taskdb=g.taskdb, projectdb=g.projectdb, resultdb=g.resultdb,
+                      newtask_queue=g.newtask_queue, status_queue=g.status_queue,
+                      out_queue=g.scheduler2fetcher, data_path=g.get('data_path', 'data'))
+        if threads:
+            kwargs['threads'] = int(threads)
 
-    scheduler = Scheduler(**kwargs)
-    scheduler.INQUEUE_LIMIT = inqueue_limit
-    scheduler.DELETE_TIME = delete_time
-    scheduler.ACTIVE_TASKS = active_tasks
-    scheduler.LOOP_LIMIT = loop_limit
-    scheduler.FAIL_PAUSE_NUM = fail_pause_num
+        scheduler = Scheduler(**kwargs)
+        scheduler.INQUEUE_LIMIT = inqueue_limit
+        scheduler.DELETE_TIME = delete_time
+        scheduler.ACTIVE_TASKS = active_tasks
+        scheduler.LOOP_LIMIT = loop_limit
+        scheduler.FAIL_PAUSE_NUM = fail_pause_num
 
-    g.instances.append(scheduler)
-    if g.get('testing_mode') or get_object:
-        return scheduler
+        g.instances.append(scheduler)
+        if g.get('testing_mode') or get_object:
+            return scheduler
 
-    if xmlrpc:
-        utils.run_in_thread(scheduler.xmlrpc_run, port=xmlrpc_port, bind=xmlrpc_host)
-    scheduler.run()
+        if xmlrpc:
+            utils.run_in_thread(scheduler.xmlrpc_run, port=xmlrpc_port, bind=xmlrpc_host)
+            if re_init_rpc_in_app:
+                app = g['app']
+                scheduler_rpc = g['scheduler_rpc']
+                init_rpc_in_app(ctx, app, scheduler_rpc)
+                re_init_rpc_in_app = False
+        logging.info('scheduler running...')
+        scheduler.run()
+        if not scheduler.keep_running:
+            break
+        else:
+            g.instances.remove(scheduler)
+            re_init_rpc_in_app = True
+            logging.info('scheduler restarted.')
 
 
 @cli.command()
@@ -381,17 +395,10 @@ def webui(ctx, host, port, cdn, scheduler_rpc, fetcher_rpc, max_rate, max_burst,
 
         app.config['fetch'] = lambda x: webui_fetcher.fetch(x)
 
-    if isinstance(scheduler_rpc, six.string_types):
-        scheduler_rpc = connect_rpc(ctx, None, scheduler_rpc)
-    if scheduler_rpc is None and os.environ.get('SCHEDULER_NAME'):
-        app.config['scheduler_rpc'] = connect_rpc(ctx, None, 'http://%s/' % (
-            os.environ['SCHEDULER_PORT_23333_TCP'][len('tcp://'):]))
-    elif scheduler_rpc is None:
-        app.config['scheduler_rpc'] = connect_rpc(ctx, None, 'http://127.0.0.1:23333/')
-    else:
-        app.config['scheduler_rpc'] = scheduler_rpc
-
+    init_rpc_in_app(ctx, app, scheduler_rpc)
     app.debug = g.debug
+    g['app'] = app
+    g['scheduler_rpc'] = scheduler_rpc
     g.instances.append(app)
     if g.get('testing_mode') or get_object:
         return app
@@ -829,8 +836,21 @@ def send_message(ctx, scheduler_rpc, project, message):
     })
 
 
+def init_rpc_in_app(ctx, app, scheduler_rpc):
+    if isinstance(scheduler_rpc, six.string_types):
+        scheduler_rpc = connect_rpc(ctx, None, scheduler_rpc)
+    if scheduler_rpc is None and os.environ.get('SCHEDULER_NAME'):
+        app.config['scheduler_rpc'] = connect_rpc(ctx, None, 'http://%s/' % (
+            os.environ['SCHEDULER_PORT_23333_TCP'][len('tcp://'):]))
+    elif scheduler_rpc is None:
+        app.config['scheduler_rpc'] = connect_rpc(ctx, None, 'http://127.0.0.1:23333/')
+    else:
+        app.config['scheduler_rpc'] = scheduler_rpc
+
+
 def main():
     cli()
+
 
 if __name__ == '__main__':
     main()
